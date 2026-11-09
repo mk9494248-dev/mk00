@@ -1,4 +1,4 @@
-name: Ultimate Gaming - Tailscale + RustDesk + Audio
+name: Ultimate Gaming - Tailscale + Portable RustDesk
 
 on:
   workflow_dispatch:
@@ -11,26 +11,24 @@ jobs:
     steps:
       - name: GPU Acceleration Override & Strip Bloatware
         run: |
-          # Force Enable Hardware Acceleration & GPU Bypass for Emulators
           Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "EnableMachineAnimations" -Value 0
           Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2
-          
-          # Strip Windows Bloatware to free RAM for Heavy Games
           Set-MpPreference -DisableRealtimeMonitoring $true
           if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender")) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Force | Out-Null }
           Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware" -Value 1
           Stop-Service wuauserv -Force
           Set-Service wuauserv -StartupType Disabled
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-
-          # Disable Firewall completely to allow Direct IP Connection for RustDesk
           Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
 
-      - name: Enable Windows Audio & Install Virtual Audio Cable
+      - name: Enable Windows Audio & RDP Backup
         run: |
           Set-Service -Name Audiosrv -StartupType Automatic
           Start-Service -Name Audiosrv
           choco install vb-cable -y --ignore-checksums
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "Familia2026!" -Force)
 
       - name: Install Tailscale
         run: |
@@ -52,21 +50,19 @@ jobs:
           }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Install & Configure RustDesk
+      - name: Start RustDesk Portable (No Install)
         run: |
-          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.5.1/rustdesk-1.5.1-x86_64.exe" -OutFile "$env:TEMP\rustdesk.exe"
-          Start-Process -FilePath "$env:TEMP\rustdesk.exe" -ArgumentList "--install" -Wait
-          Start-Sleep -Seconds 10
-          $password = "Familia2026!"
-          & "C:\Program Files\RustDesk\rustdesk.exe" --password $password
+          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.2.3/rustdesk-1.2.3-x86_64.exe" -OutFile "C:\rustdesk.exe"
+          Start-Process -FilePath "C:\rustdesk.exe" -ArgumentList "--password Familia2026!" -NoNewWindow
+          Start-Sleep -Seconds 5
 
       - name: Maintain Connection & Show Access Info
         run: |
-          Write-Host "`n=== DIRECT RUSTDESK ACCESS OVER TAILSCALE ==="
+          Write-Host "`n=== DIRECT ACCESS OVER TAILSCALE ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "RustDesk Password: Familia2026!"
-          Write-Host "Instructions: Open RustDesk on your laptop, enter the Tailscale IP above, and use the password."
-          Write-Host "==============================================`n"
+          Write-Host "Password (for both): Familia2026!"
+          Write-Host "Option 1: RustDesk (Enter Tailscale IP in your local RustDesk)"
+          Write-Host "Option 2: Normal Windows RDP (Enter Tailscale IP in Remote Desktop)"
+          Write-Host "====================================`n"
           
-          # Keep runner alive
           while ($true) { Start-Sleep -Seconds 300 }
