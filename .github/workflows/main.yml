@@ -1,4 +1,4 @@
-name: win 11 + RustDesk + Ultra Lite + Audio
+name: Ultimate Gaming - Tailscale + RustDesk + Audio
 
 on:
   workflow_dispatch:
@@ -11,8 +11,11 @@ jobs:
     steps:
       - name: GPU Acceleration Override & Strip Bloatware
         run: |
+          # Force Enable Hardware Acceleration & GPU Bypass for Emulators
           Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "EnableMachineAnimations" -Value 0
           Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2
+          
+          # Strip Windows Bloatware to free RAM for Heavy Games
           Set-MpPreference -DisableRealtimeMonitoring $true
           if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender")) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Force | Out-Null }
           Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware" -Value 1
@@ -20,25 +23,50 @@ jobs:
           Set-Service wuauserv -StartupType Disabled
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
 
+          # Disable Firewall completely to allow Direct IP Connection for RustDesk
+          Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+
       - name: Enable Windows Audio & Install Virtual Audio Cable
         run: |
           Set-Service -Name Audiosrv -StartupType Automatic
           Start-Service -Name Audiosrv
           choco install vb-cable -y --ignore-checksums
 
-      - name: Setup RustDesk for Remote Access
+      - name: Install Tailscale
         run: |
-          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.2.3/rustdesk-1.2.3-x86_64.exe" -OutFile "$env:TEMP\rustdesk.exe"
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+          $installerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process -FilePath $installerPath -ArgumentList "/quiet" -Wait
+          Remove-Item $installerPath -Force
+
+      - name: Establish Tailscale Connection
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Install & Configure RustDesk
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.5.1/rustdesk-1.5.1-x86_64" -OutFile "$env:TEMP\rustdesk.exe"
           Start-Process -FilePath "$env:TEMP\rustdesk.exe" -ArgumentList "--install" -Wait
           Start-Sleep -Seconds 10
-          $id = & "C:\Program Files\RustDesk\rustdesk.exe" --get-id
           $password = "Familia2026!"
           & "C:\Program Files\RustDesk\rustdesk.exe" --password $password
-          Write-Host "`n=== RUSTDESK ACCESS ==="
-          Write-Host "RustDesk ID: $id"
-          Write-Host "Password: $password"
-          Write-Host "======================`n"
-          
-      - name: Keep Server Alive
+
+      - name: Maintain Connection & Show Access Info
         run: |
+          Write-Host "`n=== DIRECT RUSTDESK ACCESS OVER TAILSCALE ==="
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          Write-Host "RustDesk Password: Familia2026!"
+          Write-Host "Instructions: Open RustDesk on your laptop, enter the Tailscale IP above, and use the password."
+          Write-Host "==============================================`n"
+          
+          # Keep runner alive
           while ($true) { Start-Sleep -Seconds 300 }
