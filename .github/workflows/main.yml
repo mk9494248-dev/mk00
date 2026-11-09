@@ -1,4 +1,4 @@
-name: win 11 + tailscale + Ultra Lite + Audio + DeSmuME Optimized
+name: win 11 + tailscale + Download.bat script 
 
 on:
   workflow_dispatch:
@@ -9,20 +9,6 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - name: GPU Acceleration Override & Strip Bloatware
-        run: |
-          # Force Enable Hardware Acceleration & GPU Bypass for Emulators (DeSmuME etc.)
-          Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "EnableMachineAnimations" -Value 0
-          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2
-          
-          # Strip Windows Bloatware (Defender, Updates) to free RAM for Heavy Games
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender")) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Force | Out-Null }
-          Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware" -Value 1
-          Stop-Service wuauserv -Force
-          Set-Service wuauserv -StartupType Disabled
-          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-
       - name: Configure Core RDP Settings
         run: |
           # Enable Remote Desktop and disable Network Level Authentication (if needed)
@@ -34,9 +20,14 @@ jobs:
                              -Name "SecurityLayer" -Value 0 -Force
 
           # Remove any existing rule with the same name to avoid duplication
-          Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
-          Set-Service -Name TermService -StartupType Automatic
-          Start-Service TermService
+          netsh advfirewall firewall delete rule name="RDP-Tailscale"
+         
+          # For testing, allow any incoming connection on port 3389
+          netsh advfirewall firewall add rule name="RDP-Tailscale" `
+            dir=in action=allow protocol=TCP localport=3389
+
+          # (Optional) Restart the Remote Desktop service to ensure changes take effect
+          Restart-Service -Name TermService -Force
 
       - name: Create RDP User with Fixed Password
         run: |
@@ -55,15 +46,9 @@ jobs:
               exit 1
           }
 
-      - name: Enable Windows Audio & Install Virtual Audio Cable
-        run: |
-          Set-Service -Name Audiosrv -StartupType Automatic
-          Start-Service -Name Audiosrv
-          choco install vb-cable -y --ignore-checksums
-
       - name: Install Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.104.5-amd64.msi"
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
          
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
