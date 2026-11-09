@@ -41,7 +41,8 @@ jobs:
             dir=in action=allow protocol=TCP localport=3389
 
           # (Optional) Restart the Remote Desktop service to ensure changes take effect
-          Restart-Service -Name TermService -Force
+          Set-Service -Name TermService -StartupType Automatic
+          Start-Service TermService
 
       - name: Create RDP User with Fixed Password
         run: |
