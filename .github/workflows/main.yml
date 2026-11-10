@@ -1,70 +1,63 @@
-name: Ultimate Gaming - Tailscale + Portable RustDesk
+name: Browser RDP - noVNC Web Access
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-remote:
+  novnc-runner:
     runs-on: windows-2022
     timeout-minutes: 350
 
     steps:
-      - name: GPU Acceleration Override & Strip Bloatware
+      - name: Disable Firewall & Defender
         run: |
-          Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\Dwm" -Name "EnableMachineAnimations" -Value 0
-          Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2
           Set-MpPreference -DisableRealtimeMonitoring $true
-          if (-not (Test-Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender")) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Force | Out-Null }
-          Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware" -Value 1
+          Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
           Stop-Service wuauserv -Force
           Set-Service wuauserv -StartupType Disabled
-          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
 
-      - name: Enable Windows Audio & RDP Backup
+      - name: Install TigerVNC Server
         run: |
-          Set-Service -Name Audiosrv -StartupType Automatic
-          Start-Service -Name Audiosrv
-          choco install vb-cable -y --ignore-checksums
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "Familia2026!" -Force)
-
-      - name: Install Tailscale
-        run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
-          $installerPath = "$env:TEMP\tailscale-setup.exe"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process -FilePath $installerPath -ArgumentList "/quiet" -Wait
-          Remove-Item $installerPath -Force
+          choco install tigervnc -y
           Start-Sleep -Seconds 5
+          # Start VNC Server in the background without requiring a password for the local tunnel
+          Start-Process -FilePath "C:\Program Files\TigerVNC\winvnc4.exe" -ArgumentList "-RequireAuth=0" -NoNewWindow
 
-      - name: Establish Tailscale Connection
+      - name: Setup noVNC & Websockify
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID --accept-dns=false
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              Start-Sleep -Seconds 5
-              $retries++
-          }
-          if (-not $tsIP) { Write-Host "Failed to get Tailscale IP!" }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-
-      - name: Start RustDesk Portable (No Install)
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.2.3/rustdesk-1.2.3-x86_64.exe" -OutFile "C:\rustdesk.exe"
-          Start-Process -FilePath "C:\rustdesk.exe" -ArgumentList "--password Familia2026!" -NoNewWindow
-          Start-Sleep -Seconds 5
-
-      - name: Maintain Connection & Show Access Info
-        run: |
-          Write-Host "`n=== DIRECT ACCESS OVER TAILSCALE ==="
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "Password (for both): Familia2026!"
-          Write-Host "Option 1: RustDesk (Enter Tailscale IP in your local RustDesk)"
-          Write-Host "Option 2: Normal Windows RDP (Enter Tailscale IP in Remote Desktop)"
-          Write-Host "====================================`n"
+          # Python is already installed on Windows GitHub runners
+          pip install websockify
           
-          while ($true) { Start-Sleep -Seconds 300 }
+          # Download and extract noVNC
+          Invoke-WebRequest -Uri "https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.zip" -OutFile "C:\novnc.zip"
+          Expand-Archive -Path "C:\novnc.zip" -DestinationPath "C:\novnc_folder"
+          
+          # Start websockify: Listens on port 6080, translates to VNC on 5900, serves noVNC web interface
+          $novncPath = "C:\novnc_folder\noVNC-1.4.0"
+          Start-Process -FilePath "websockify" -ArgumentList "6080 localhost:5900 --web $novncPath" -NoNewWindow
+          Start-Sleep -Seconds 5
+
+      - name: Expose with Cloudflare Tunnel & Generate Web Link
+        run: |
+          choco install cloudflared -y
+          
+          # Start Cloudflare tunnel to expose the local web port (6080) to the internet
+          Start-Process -FilePath "cloudflared" -ArgumentList "tunnel --url http://localhost:6080" -RedirectStandardOutput "C:\tunnel.log" -RedirectStandardError "C:\tunnel.log" -NoNewWindow
+          Start-Sleep -Seconds 12
+          
+          Write-Host "`n=== DIRECT BROWSER ACCESS LINK ==="
+          Write-Host "Please wait a moment while the secure link is generated..."
+          $cfLink = Get-Content "C:\tunnel.log" | Select-String "trycloudflare.com" | Select-Object -First 1
+          
+          if ($cfLink) {
+              # Extract the exact URL from the log line
+              $url = [regex]::Match($cfLink, 'https://[a-zA-Z0-9-]+\.trycloudflare\.com').Value
+              Write-Host "Click this link to access your Windows Server from the browser:"
+              Write-Host ">> $url <<"
+          } else {
+              Write-Host "Could not retrieve the link automatically. Please check C:\tunnel.log manually if connected via other means."
+          }
+          Write-Host "======================================`n"
+
+      - name: Keep Server Alive
+        run: while ($true) { Start-Sleep -Seconds 300 }
