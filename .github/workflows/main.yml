@@ -21,7 +21,7 @@ jobs:
           choco install tigervnc -y
           Start-Sleep -Seconds 5
           # Start VNC Server in the background without requiring a password for the local tunnel
-          Start-Process -FilePath "C:\Program Files\TigerVNC\winvnc4.exe" -ArgumentList "-RequireAuth=0" -NoNewWindow
+          Start-Process -FilePath "C:\Program Files\TigerVNC\vncviewer.exe" -ArgumentList "-RequireAuth=0" -NoNewWindow
 
       - name: Setup noVNC & Websockify
         run: |
