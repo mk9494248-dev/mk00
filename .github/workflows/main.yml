@@ -20,8 +20,8 @@ jobs:
         run: |
           choco install tigervnc -y
           Start-Sleep -Seconds 5
-          # Start VNC Server in the background without requiring a password for the local tunnel
-          Start-Process -FilePath "C:\Program Files\TigerVNC\vncviewer.exe" -ArgumentList "-RequireAuth=0" -NoNewWindow
+          # Start VNC Server (tvnserver) in the background
+          Start-Process -FilePath "C:\Program Files\TigerVNC\tvnserver.exe" -NoNewWindow
 
       - name: Setup noVNC & Websockify
         run: |
@@ -41,21 +41,23 @@ jobs:
         run: |
           choco install cloudflared -y
           
-          # Start Cloudflare tunnel to expose the local web port (6080) to the internet
-          Start-Process -FilePath "cloudflared" -ArgumentList "tunnel --url http://localhost:6080" -RedirectStandardOutput "C:\tunnel.log" -RedirectStandardError "C:\tunnel.log" -NoNewWindow
+          # Start Cloudflare tunnel and redirect outputs to separate files
+          Start-Process -FilePath "cloudflared" -ArgumentList "tunnel --url http://localhost:6080" -RedirectStandardOutput "C:\tunnel_out.log" -RedirectStandardError "C:\tunnel_err.log" -NoNewWindow
           Start-Sleep -Seconds 12
           
           Write-Host "`n=== DIRECT BROWSER ACCESS LINK ==="
           Write-Host "Please wait a moment while the secure link is generated..."
-          $cfLink = Get-Content "C:\tunnel.log" | Select-String "trycloudflare.com" | Select-Object -First 1
+          
+          # Cloudflared writes the tunnel URL to Standard Error (tunnel_err.log)
+          $cfLink = Get-Content "C:\tunnel_err.log" | Select-String "trycloudflare.com" | Select-Object -First 1
           
           if ($cfLink) {
-              # Extract the exact URL from the log line
               $url = [regex]::Match($cfLink, 'https://[a-zA-Z0-9-]+\.trycloudflare\.com').Value
               Write-Host "Click this link to access your Windows Server from the browser:"
               Write-Host ">> $url <<"
           } else {
-              Write-Host "Could not retrieve the link automatically. Please check C:\tunnel.log manually if connected via other means."
+              Write-Host "Could not retrieve the link automatically. Please check C:\tunnel_err.log manually."
+              Get-Content "C:\tunnel_err.log"
           }
           Write-Host "======================================`n"
 
