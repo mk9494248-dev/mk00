@@ -1,10 +1,10 @@
-name: Browser RDP - noVNC Web Access
+name: Ultimate Minimal - Tailscale + VNC
 
 on:
   workflow_dispatch:
 
 jobs:
-  novnc-runner:
+  secure-vnc:
     runs-on: windows-2022
     timeout-minutes: 350
 
@@ -16,50 +16,51 @@ jobs:
           Stop-Service wuauserv -Force
           Set-Service wuauserv -StartupType Disabled
 
-      - name: Install TigerVNC Server
+      - name: Install & Configure TightVNC Server
         run: |
-          choco install tigervnc -y
+          # Install TightVNC (Only ~3MB)
+          choco install tightvnc -y
           Start-Sleep -Seconds 5
-          # Start VNC Server (tvnserver) in the background
-          Start-Process -FilePath "C:\Program Files\TigerVNC\tvnserver.exe" -NoNewWindow
+          
+          # Disable authentication to allow direct login
+          if (-not (Test-Path "HKLM:\Software\TightVNC\Server")) { New-Item -Path "HKLM:\Software\TightVNC\Server" -Force | Out-Null }
+          Set-ItemProperty -Path "HKLM:\Software\TightVNC\Server" -Name "UseVncAuthentication" -Value 0 -Type DWord -Force
+          Set-ItemProperty -Path "HKLM:\Software\TightVNC\Server" -Name "UseControlAuthentication" -Value 0 -Type DWord -Force
+          
+          # Start TightVNC Server in the background
+          Start-Process -FilePath "C:\Program Files\TightVNC\tvnserver.exe" -ArgumentList "-run" -NoNewWindow
+          Start-Sleep -Seconds 3
 
-      - name: Setup noVNC & Websockify
+      - name: Install Tailscale
         run: |
-          # Python is already installed on Windows GitHub runners
-          pip install websockify
-          
-          # Download and extract noVNC
-          Invoke-WebRequest -Uri "https://github.com/novnc/noVNC/archive/refs/tags/v1.4.0.zip" -OutFile "C:\novnc.zip"
-          Expand-Archive -Path "C:\novnc.zip" -DestinationPath "C:\novnc_folder"
-          
-          # Start websockify: Listens on port 6080, translates to VNC on 5900, serves noVNC web interface
-          $novncPath = "C:\novnc_folder\noVNC-1.4.0"
-          Start-Process -FilePath "websockify" -ArgumentList "6080 localhost:5900 --web $novncPath" -NoNewWindow
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+          $installerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process -FilePath $installerPath -ArgumentList "/quiet" -Wait
+          Remove-Item $installerPath -Force
           Start-Sleep -Seconds 5
 
-      - name: Expose with Cloudflare Tunnel & Generate Web Link
+      - name: Establish Tailscale Connection
         run: |
-          choco install cloudflared -y
-          
-          # Start Cloudflare tunnel and redirect outputs to separate files
-          Start-Process -FilePath "cloudflared" -ArgumentList "tunnel --url http://localhost:6080" -RedirectStandardOutput "C:\tunnel_out.log" -RedirectStandardError "C:\tunnel_err.log" -NoNewWindow
-          Start-Sleep -Seconds 12
-          
-          Write-Host "`n=== DIRECT BROWSER ACCESS LINK ==="
-          Write-Host "Please wait a moment while the secure link is generated..."
-          
-          # Cloudflared writes the tunnel URL to Standard Error (tunnel_err.log)
-          $cfLink = Get-Content "C:\tunnel_err.log" | Select-String "trycloudflare.com" | Select-Object -First 1
-          
-          if ($cfLink) {
-              $url = [regex]::Match($cfLink, 'https://[a-zA-Z0-9-]+\.trycloudflare\.com').Value
-              Write-Host "Click this link to access your Windows Server from the browser:"
-              Write-Host ">> $url <<"
-          } else {
-              Write-Host "Could not retrieve the link automatically. Please check C:\tunnel_err.log manually."
-              Get-Content "C:\tunnel_err.log"
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID --accept-dns=false
+          $tsIP = $null
+          $retries = 0
+          while (-not $tsIP -and $retries -lt 10) {
+              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 5
+              $retries++
           }
-          Write-Host "======================================`n"
+          if (-not $tsIP) { Write-Host "Failed to get Tailscale IP!" }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Keep Server Alive
-        run: while ($true) { Start-Sleep -Seconds 300 }
+      - name: Access Info
+        run: |
+          Write-Host "`n=== DIRECT VNC OVER TAILSCALE ==="
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          Write-Host "How to connect:"
+          Write-Host "1. Download VNC Viewer on your laptop (like RealVNC or TightVNC Viewer)."
+          Write-Host "2. Enter the Tailscale IP above."
+          Write-Host "3. Press Connect (No password required!)."
+          Write-Host "====================================`n"
+          
+          while ($true) { Start-Sleep -Seconds 300 }
