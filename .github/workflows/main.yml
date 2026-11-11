@@ -57,14 +57,17 @@ jobs:
 
       - name: Establish Tailscale Connection
         run: |
-          # Bring up Tailscale with the provided auth key and set a unique hostname
-          tailscale up --authkey=tskey-auth-k7cxH13nMU11CNTRL-zFNEmwcXVnCay7Ka78v6nCctyGDruzY9M --hostname=github-rdp --accept-routes
+          # Add Tailscale to PATH so the system recognizes the command
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          # Bring up Tailscale using the secure Secret key and set a unique hostname
+          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-rdp --accept-routes
          
           # Wait for Tailscale to assign an IP
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              $tsIP = tailscale ip -4
               Start-Sleep -Seconds 5
               $retries++
           }
