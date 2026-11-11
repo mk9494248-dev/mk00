@@ -78,10 +78,10 @@ jobs:
       - name: Enable Audio Services and RDP Audio Redirection
         shell: powershell
         run: |
-          sc config AudioSrv start= auto
-          sc config AudioEndpointBuilder start= auto
-          Start-Service -Name AudioSrv
+          Set-Service -Name AudioSrv -StartupType Automatic
+          Set-Service -Name AudioEndpointBuilder -StartupType Automatic
           Start-Service -Name AudioEndpointBuilder
+          Start-Service -Name AudioSrv
 
           $policyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
           if (!(Test-Path $policyPath)) { New-Item -Path $policyPath -Force | Out-Null }
