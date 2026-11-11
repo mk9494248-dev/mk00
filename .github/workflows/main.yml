@@ -9,27 +9,47 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Optimize CPU, Debloat and Force Software GPU
+      - name: Optimize CPU, Fix Desync, Speedup RDP & Get Mesa3D
         shell: powershell
         run: |
-          # 1. Disable Windows Defender to save CPU and RAM
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          Uninstall-WindowsFeature -Name Windows-Defender -ErrorAction SilentlyContinue
+          # 1. Paralyze Defender INSTANTLY to save CPU (NO HANGING)
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+          Set-MpPreference -DisableBehaviorMonitoring $true -ErrorAction SilentlyContinue
           
-          # 2. Set Ultimate/High Performance Power Plan
+          # 2. Ultimate Performance Power Plan & Visual Tweaks
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          
-          # 3. Disable visual effects for RDP (Maximize game performance)
           Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2
           
-          # 4. Install Media Foundation to help heavy games launch without crashing
-          Install-WindowsFeature Server-Media-Foundation
-          
-          # 5. Disable background Telemetry and Bloatware services
+          # 3. KIll Bloatware Services
           Stop-Service -Name "DiagTrack" -Force -ErrorAction SilentlyContinue
           Set-Service -Name "DiagTrack" -StartupType Disabled -ErrorAction SilentlyContinue
           Stop-Service -Name "SysMain" -Force -ErrorAction SilentlyContinue
           Set-Service -Name "SysMain" -StartupType Disabled -ErrorAction SilentlyContinue
+
+          # 4. FIX DESYNC: Prioritize Multimedia and Games over Network bandwidth
+          $mmcss = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
+          if (!(Test-Path $mmcss)) { New-Item -Path $mmcss -Force | Out-Null }
+          Set-ItemProperty -Path $mmcss -Name "NetworkThrottlingIndex" -Value 0xffffffff -Type DWord
+          Set-ItemProperty -Path $mmcss -Name "SystemResponsiveness" -Value 10 -Type DWord
+
+          # 5. RDP SPEEDUP: Unlock H.264, 444, and Force 60 FPS for "طلقة" speed!
+          $rdpPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
+          if (!(Test-Path $rdpPolicy)) { New-Item -Path $rdpPolicy -Force | Out-Null }
+          Set-ItemProperty -Path $rdpPolicy -Name "bEnableH264Codec" -Value 1 -Type DWord
+          Set-ItemProperty -Path $rdpPolicy -Name "bEnableH264Codec444" -Value 1 -Type DWord
+          Set-ItemProperty -Path $rdpPolicy -Name "MaxMonitors" -Value 1 -Type DWord
+          
+          $rdpTcp = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
+          if (!(Test-Path $rdpTcp)) { New-Item -Path $rdpTcp -Force | Out-Null }
+          Set-ItemProperty -Path $rdpTcp -Name "MaxFrameRate" -Value 60 -Type DWord
+
+          # 6. Safely Download and Extract Mesa3D to C:\Mesa3D (No crashes, No Setup Script)
+          Write-Host "Downloading Mesa3D safely..."
+          Invoke-WebRequest -Uri "https://github.com/pal1000/mesa-dist-win/releases/download/23.1.9/mesa3d-23.1.9-release-msvc.7z" -OutFile "C:\mesa.7z"
+          Write-Host "Extracting to C:\Mesa3D..."
+          & "7z.exe" x "C:\mesa.7z" -o"C:\Mesa3D" -y
+          Remove-Item "C:\mesa.7z" -Force
+          Write-Host "Optimization Complete! Mesa3D is ready at C:\Mesa3D"
 
       - name: Configure Core RDP Settings
         run: |
