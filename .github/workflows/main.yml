@@ -68,6 +68,22 @@ jobs:
         run: |
           $username = $env:RDP_USER
           $password = $env:RDP_PASS
+          
+          $uLen = if ($username) { $username.Length } else { 0 }
+          $pLen = if ($password) { $password.Length } else { 0 }
+          
+          Write-Host "RDP_USER length: $uLen"
+          Write-Host "RDP_PASS length: $pLen"
+          
+          if ($uLen -eq 0) {
+            Write-Error "RDP_USERNAME secret is empty or missing. Check the secret name exactly."
+            exit 1
+          }
+          if ($pLen -eq 0) {
+            Write-Error "RDP_PASSWORD secret is empty or missing. Check the secret name exactly."
+            exit 1
+          }
+          
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           if (-not (Get-LocalUser -Name $username -ErrorAction SilentlyContinue)) {
               New-LocalUser -Name $username -Password $securePass -AccountNeverExpires
