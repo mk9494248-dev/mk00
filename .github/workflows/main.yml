@@ -63,24 +63,13 @@ jobs:
       - name: Create RDP User with Secure Credentials
         shell: powershell
         env:
-          RDP_USER: ${{ secrets.RDP_USERNAME }}
           RDP_PASS: ${{ secrets.RDP_PASSWORD }}
         run: |
-          $username = $env:RDP_USER
+          $username = "RDP"
           $password = $env:RDP_PASS
           
-          $uLen = if ($username) { $username.Length } else { 0 }
-          $pLen = if ($password) { $password.Length } else { 0 }
-          
-          Write-Host "RDP_USER length: $uLen"
-          Write-Host "RDP_PASS length: $pLen"
-          
-          if ($uLen -eq 0) {
-            Write-Error "RDP_USERNAME secret is empty or missing. Check the secret name exactly."
-            exit 1
-          }
-          if ($pLen -eq 0) {
-            Write-Error "RDP_PASSWORD secret is empty or missing. Check the secret name exactly."
+          if ([string]::IsNullOrEmpty($password)) {
+            Write-Error "RDP_PASSWORD is empty! You are still in the 'Variables' tab instead of the 'Secrets' tab."
             exit 1
           }
           
@@ -105,7 +94,7 @@ jobs:
       - name: Establish Tailscale Connection
         run: |
           $env:Path += ";C:\Program Files\Tailscale"
-          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID --accept-routes
+          tailscale up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID --accept-routes --advertise-exit-node
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
@@ -145,12 +134,10 @@ jobs:
           Write-Host "TCP connectivity successful!"
 
       - name: Maintain Connection
-        env:
-          RDP_USER: ${{ secrets.RDP_USERNAME }}
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: $env:RDP_USER"
+          Write-Host "Username: RDP"
           Write-Host "Password: [Stored Securely in Secrets]"
           Write-Host "==================`n"
           while ($true) {
