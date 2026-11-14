@@ -37,7 +37,6 @@ jobs:
           if (!(Test-Path $rdpPolicy)) { New-Item -Path $rdpPolicy -Force | Out-Null }
           Set-ItemProperty -Path $rdpPolicy -Name "bEnableH264Codec" -Value 1 -Type DWord
           Set-ItemProperty -Path $rdpPolicy -Name "bEnableH264Codec444" -Value 1 -Type DWord
-          # Tweak from Miss Bossy to force CPU to render graphics like a GPU!
           Set-ItemProperty -Path $rdpPolicy -Name "bEnforceHardwareGraphics" -Value 1 -Type DWord
           Set-ItemProperty -Path $rdpPolicy -Name "fEnableH264" -Value 1 -Type DWord
           Set-ItemProperty -Path $rdpPolicy -Name "MaxMonitors" -Value 1 -Type DWord
@@ -60,7 +59,10 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
           netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          # ALLOW TCP
+          netsh advfirewall firewall add rule name="RDP-Tailscale-TCP" dir=in action=allow protocol=TCP localport=3389
+          # ALLOW UDP FOR CRAZY SPEED!
+          netsh advfirewall firewall add rule name="RDP-Tailscale-UDP" dir=in action=allow protocol=UDP localport=3389
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User with Secure Credentials
@@ -122,8 +124,14 @@ jobs:
           if (!(Test-Path $policyPath)) { New-Item -Path $policyPath -Force | Out-Null }
           Set-ItemProperty -Path $policyPath -Name "fDisableAudioCapture" -Value 0 -Type DWord
           Set-ItemProperty -Path $policyPath -Name "fAllowSoundRedirection" -Value 1 -Type DWord
+          # FIX DESYNC: Dynamic Audio Quality to match video speed!
+          Set-ItemProperty -Path $policyPath -Name "AudioPlaybackQuality" -Value 1 -Type DWord
+          
           $rdpTcpPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
           Set-ItemProperty -Path $rdpTcpPath -Name "fDisableAudioCapture" -Value 0 -Type DWord
+          # Set WinStation Audio Quality to Dynamic
+          Set-ItemProperty -Path $rdpTcpPath -Name "AudioPlaybackQuality" -Value 1 -Type DWord
+          
           Restart-Service -Name TermService -Force
 
       - name: Verify RDP Accessibility
