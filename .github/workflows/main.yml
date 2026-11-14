@@ -32,11 +32,14 @@ jobs:
           Set-ItemProperty -Path $mmcss -Name "NetworkThrottlingIndex" -Value 0xffffffff -Type DWord
           Set-ItemProperty -Path $mmcss -Name "SystemResponsiveness" -Value 10 -Type DWord
 
-          # 5. RDP SPEEDUP: Unlock H.264, 444, and Force 60 FPS for "طلقة" speed!
+          # 5. RDP SPEEDUP: Unlock H.264, 444, Force 60 FPS, AND Enforce Hardware Graphics!
           $rdpPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
           if (!(Test-Path $rdpPolicy)) { New-Item -Path $rdpPolicy -Force | Out-Null }
           Set-ItemProperty -Path $rdpPolicy -Name "bEnableH264Codec" -Value 1 -Type DWord
           Set-ItemProperty -Path $rdpPolicy -Name "bEnableH264Codec444" -Value 1 -Type DWord
+          # Tweak from Miss Bossy to force CPU to render graphics like a GPU!
+          Set-ItemProperty -Path $rdpPolicy -Name "bEnforceHardwareGraphics" -Value 1 -Type DWord
+          Set-ItemProperty -Path $rdpPolicy -Name "fEnableH264" -Value 1 -Type DWord
           Set-ItemProperty -Path $rdpPolicy -Name "MaxMonitors" -Value 1 -Type DWord
           
           $rdpTcp = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
